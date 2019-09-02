@@ -21,7 +21,7 @@ export const handler: APIGatewayProxyHandler = async (
 
   const newItem = {
     id: itemId,
-    ...parsedBody
+    ...parsedBody 
   };
 
   await docClient

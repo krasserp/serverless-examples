@@ -128,6 +128,12 @@ functions:
     events:
       - websocket:
           route: $disconnect
+  SyncWithElasticSearch:
+    handler: src/lambda/dynamoDb/elasticSearchSync.handler
+    events:
+    - stream:
+        type: dynamodb
+        arn: !GetAtt ImagesDynamoDBTable.StreamArn
 resources:
   Resources:
     RequestBodyValidator:
@@ -167,6 +173,8 @@ resources:
           - AttributeName: timestamp
             KeyType: RANGE
         BillingMode: PAY_PER_REQUEST
+        StreamSpecification:
+          StreamViewType: NEW_IMAGE
         TableName: ${self:provider.environment.IMAGES_TABLE}
         GlobalSecondaryIndexes:
           - IndexName: ${self:provider.environment.IMAGE_ID_INDEX}
@@ -182,12 +190,11 @@ resources:
         BucketName: ${self:provider.environment.IMAGES_S3_BUCKET}
         NotificationConfiguration:
           LambdaConfigurations:
-          - Event: s3:ObjectCreated:*
-            Function: !GetAtt SendUploadNotificationsLambdaFunction.Arn
+            - Event: s3:ObjectCreated:*
+              Function: !GetAtt SendUploadNotificationsLambdaFunction.Arn
         CorsConfiguration:
           CorsRules:
-            - 
-              AllowedOrigins:
+            - AllowedOrigins:
                 - "*"
               AllowedHeaders:
                 - "*"
@@ -207,17 +214,15 @@ resources:
         Action: lambda:InvokeFunction
         SourceAccount: !Ref AWS::AccountId
         SourceArn: arn:aws:s3:::${self:provider.environment.IMAGES_S3_BUCKET}
-    
+
     WebSocketConnectionsDynamoDBTable:
       Type: AWS::DynamoDB::Table
       Properties:
         AttributeDefinitions:
-          -
-            AttributeName: id
+          - AttributeName: id
             AttributeType: S
         KeySchema:
-          -
-            AttributeName: id
+          - AttributeName: id
             KeyType: HASH
         BillingMode: PAY_PER_REQUEST
         TableName: ${self:provider.environment.CONNECTIONS_TABLE}
@@ -235,3 +240,28 @@ resources:
               Action: "s3:GetObject"
               Resource: "arn:aws:s3:::${self:provider.environment.IMAGES_S3_BUCKET}/*"
         Bucket: !Ref AttachmentsBucket
+
+    ImagesSearch:
+      Type: AWS::Elasticsearch::Domain
+      Properties:
+        ElasticsearchVersion: "6.3"
+        DomainName: images-search-${self:provider.stage}
+        ElasticsearchClusterConfig:
+          DedicatedMasterEnabled: false
+          InstanceCount: '1'
+          ZoneAwarenessEnabled: false
+          InstanceType: t2.small.elasticsearch
+        EBSOptions:
+          EBSEnabled: true
+          Iops: 0
+          VolumeSize: 10
+          VolumeType: 'gp2'
+        AccessPolicies:
+          Version: '2012-10-17'
+          Statement:
+            - 
+              Effect: Allow
+              Principal:
+                AWS: '*'
+              Action: 'es:*'
+              Resource: '*'
